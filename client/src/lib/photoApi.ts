@@ -9,7 +9,8 @@ export interface Photo {
 // Obtener todas las fotos del servidor con fallback a localStorage
 export const getPhotos = async (): Promise<Photo[]> => {
   try {
-    const response = await fetch('/api/photos');
+    // CAMBIO 1: La ruta ahora apunta a la función específica 'getPhotos'
+    const response = await fetch('/api/getPhotos');
     if (!response.ok) {
       throw new Error('Error al cargar las fotos del servidor');
     }
@@ -129,7 +130,8 @@ export const uploadPhoto = async (file: File): Promise<Photo> => {
     const compressedFile = await compressImage(file);
     const dataUrl = await fileToBase64(compressedFile);
     
-    const response = await fetch('/api/photos', {
+    // CAMBIO 2: La ruta ahora apunta a la función específica 'uploadPhoto'
+    const response = await fetch('/api/uploadPhoto', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -187,4 +189,3 @@ export const deletePhoto = async (id: string): Promise<boolean> => {
     return false;
   }
 };
-
