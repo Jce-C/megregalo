@@ -1,36 +1,47 @@
 import type { Handler } from "@netlify/functions";
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from "drizzle-orm/neon-http";
-import { pgTable, text, varchar, timestamp } from "drizzle-orm/pg-core";
+import admin from 'firebase-admin';
 
-// Define el esquema (la estructura de la tabla) aquí mismo
-// para que la función sea totalmente independiente.
-export const photos = pgTable("photos", {
-  id: varchar("id").primaryKey(),
-  filename: text("filename").notNull(),
-  url: text("url").notNull(),
-  uploadedAt: timestamp("uploaded_at").notNull(),
-});
-
-const handler: Handler = async (event) => {
-  console.log("Iniciando getPhotos function (versión definitiva)...");
+// Inicializa Firebase Admin solo si no se ha hecho antes
+if (admin.apps.length === 0) {
   try {
-    // Comprueba que la variable de entorno de la base de datos exista
-    if (!process.env.NETLIFY_DATABASE_URL) {
-      throw new Error("DATABASE_URL no fue encontrada. Asegúrate de que la extensión Neon esté activada en Netlify.");
-    }
-    
-    // Conecta a la base de datos
-    const sql = neon(process.env.NETLIFY_DATABASE_URL);
-    const db = drizzle(sql);
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    });
+  } catch (error) {
+    console.error("Error initializing Firebase Admin SDK:", error);
+  }
+}
 
-    // Obtiene todas las fotos
-    const result = await db.select().from(photos);
-    console.log(`Fotos encontradas en la base de datos: ${result.length}`);
-    
+const db = admin.firestore();
+
+const handler: Handler = async () => {
+  try {
+    const snapshot = await db.collection('photos').orderBy('uploadedAt', 'desc').get();
+    if (snapshot.empty) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify([]),
+        headers: { 'Content-Type': 'application/json' }
+      };
+    }
+
+    const photos: any[] = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      photos.push({
+        id: doc.id,
+        ...data,
+        uploadedAt: data.uploadedAt.toDate().toISOString()
+      });
+    });
+
     return {
       statusCode: 200,
-      body: JSON.stringify(result),
+      body: JSON.stringify(photos),
       headers: { 'Content-Type': 'application/json' }
     };
   } catch (error: any) {
