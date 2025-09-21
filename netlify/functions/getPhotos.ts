@@ -1,34 +1,39 @@
 import type { Handler } from "@netlify/functions";
 import admin from 'firebase-admin';
 
+// Función para decodificar la variable Base64 y obtener las credenciales
+function getFirebaseCredentials() {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+    throw new Error('La variable de entorno FIREBASE_SERVICE_ACCOUNT_BASE64 no está definida.');
+  }
+  const encodedCredentials = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+  const decodedCredentials = Buffer.from(encodedCredentials, 'base64').toString('utf-8');
+  return JSON.parse(decodedCredentials);
+}
+
 // Inicializa Firebase Admin solo si no se ha hecho antes
 if (admin.apps.length === 0) {
   try {
+    const serviceAccount = getFirebaseCredentials();
     admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
+      credential: admin.credential.cert(serviceAccount),
     });
-  } catch (error) {
-    console.error("Error initializing Firebase Admin SDK:", error);
+  } catch (error: any) {
+    console.error("Error FATAL al inicializar Firebase Admin SDK:", error.message);
   }
 }
 
-const db = admin.firestore();
+const db = admin.apps.length ? admin.firestore() : null;
 
 const handler: Handler = async () => {
+  if (!db) {
+    const errorMessage = "La base de datos de Firebase no pudo inicializarse. Revisa las credenciales.";
+    console.error(errorMessage);
+    return { statusCode: 500, body: JSON.stringify({ message: errorMessage }) };
+  }
+  
   try {
     const snapshot = await db.collection('photos').orderBy('uploadedAt', 'desc').get();
-    if (snapshot.empty) {
-      return {
-        statusCode: 200,
-        body: JSON.stringify([]),
-        headers: { 'Content-Type': 'application/json' }
-      };
-    }
-
     const photos: any[] = [];
     snapshot.forEach(doc => {
       const data = doc.data();
@@ -45,7 +50,7 @@ const handler: Handler = async () => {
       headers: { 'Content-Type': 'application/json' }
     };
   } catch (error: any) {
-    console.error("Error CRÍTICO en getPhotos:", error);
+    console.error("Error en el handler de getPhotos:", error.message);
     return {
       statusCode: 500,
       body: JSON.stringify({ message: `Error al obtener fotos: ${error.message}` })
