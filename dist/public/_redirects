@@ -1,0 +1,2 @@
+# SPA routing - redirect all routes to index.html for React Router
+/* /index.html 200
