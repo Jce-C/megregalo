@@ -1,56 +1,49 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from "drizzle-orm/neon-http";
-import { sql } from "drizzle-orm"; // <-- LA CORRECCIÓN ESTÁ AQUÍ
-import { pgTable, text, varchar, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from 'drizzle-zod';
+import admin from 'firebase-admin';
 
-// Define el esquema aquí
-export const photosTable = pgTable("photos", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  filename: text("filename").notNull(),
-  url: text("url").notNull(),
-  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
-});
-const insertPhotoSchema = createInsertSchema(photosTable);
+// Inicializa Firebase Admin solo si no se ha hecho antes
+if (admin.apps.length === 0) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    });
+  } catch (error) {
+    console.error("Error initializing Firebase Admin SDK:", error);
+  }
+}
 
+const db = admin.firestore();
 
 const handler: Handler = async (event: HandlerEvent) => {
-  console.log("Iniciando uploadPhoto function (versión definitiva)...");
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
   try {
-    if (!process.env.NETLIFY_DATABASE_URL) {
-      throw new Error("DATABASE_URL no fue encontrada. Asegúrate de que la extensión Neon esté activada en Netlify.");
-    }
-
     if (!event.body) {
-      throw new Error("No hay cuerpo en la solicitud (body).");
+      throw new Error("No hay cuerpo en la solicitud.");
     }
-    
-    // Conecta a la base de datos
-    const sqlNeon = neon(process.env.NETLIFY_DATABASE_URL);
-    const db = drizzle(sqlNeon);
-    
-    console.log("Recibido body, parseando JSON...");
-    const { filename, dataUrl } = JSON.parse(event.body);
 
+    const { filename, dataUrl } = JSON.parse(event.body);
     if (!filename || !dataUrl) {
       throw new Error("Faltan 'filename' o 'dataUrl' en el body.");
     }
-    
-    console.log(`Guardando foto en la DB: ${filename}`);
-    const photoToInsert = { filename, url: dataUrl };
-    
-    // Inserta la nueva foto y la devuelve
-    const result = await db.insert(photosTable).values(photoToInsert).returning();
-    console.log("Foto guardada exitosamente:", result[0]);
+
+    const docRef = await db.collection('photos').add({
+      filename,
+      url: dataUrl,
+      uploadedAt: new Date(),
+    });
+
+    const newPhoto = { id: docRef.id, filename, url: dataUrl, uploadedAt: new Date().toISOString() };
 
     return {
       statusCode: 200,
-      body: JSON.stringify(result[0]),
+      body: JSON.stringify(newPhoto),
       headers: { 'Content-Type': 'application/json' }
     };
 
