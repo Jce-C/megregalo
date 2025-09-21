@@ -1,27 +1,14 @@
 [build]
   publish = "dist/public"
   command = "npm install && vite build"
-  functions = "netlify/functions" # <-- Añade esta línea para indicar dónde están las funciones
-
-[build.environment]
-  NODE_VERSION = "20"
-
-# Redirige las llamadas a la API a tus funciones
-[[redirects]]
-  from = "/api/photos"
-  to = "/.netlify/functions/getPhotos"
-  status = 200
-  force = true
-  conditions = { "Method" = ["GET"] }
+  functions = "netlify/functions"
 
 [[redirects]]
-  from = "/api/photos"
-  to = "/.netlify/functions/uploadPhoto"
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
   status = 200
   force = true
-  conditions = { "Method" = ["POST"] }
 
-# Regla para SPA (Single Page Application) - mantenla al final
 [[redirects]]
   from = "/*"
   to = "/index.html"
